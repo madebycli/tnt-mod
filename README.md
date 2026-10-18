@@ -1,13 +1,13 @@
 # TNT Editions — Fabric 26.2
 
-Eine Minecraft-Java-Mod für **Minecraft 26.2**, **Fabric Loader 0.19.5+**, **Fabric API 0.161.0+26.2** und **Java 25**. Einzelspieler und Fabric-Server werden unterstützt; die Mod und Fabric API müssen auf Client und Server installiert sein.
+Eine Minecraft-Java-Mod für **Minecraft 26.2**, **Fabric Loader 0.19.5+**, **Fabric API 0.161.0+26.2** und **Java 25**. Einzelspieler und Fabric-Server werden unterstützt; Client und Server müssen beide Mod-Version **1.1.0** und die passende Fabric API verwenden.
 
 **Fertige Mod herunterladen:** [fertig.jar](https://github.com/madebycli/tnt-mod/raw/refs/heads/main/fertig.jar). Falls der Direktdownload eine Anmeldung benötigt, die [Datei auf GitHub öffnen](https://github.com/madebycli/tnt-mod/blob/main/fertig.jar) und „Download raw“ wählen.
 
 ## Spielen
 
 1. Fabric für **26.2** installieren.
-2. Die heruntergeladene `fertig.jar` (oder die selbst gebaute `tnt-editions-1.0.0.jar` aus `build/libs/`) und die passende **Fabric API für 26.2** in den `mods`-Ordner legen. Die `-sources.jar` wird zum Spielen nicht benötigt.
+2. Die heruntergeladene `fertig.jar` (oder die selbst gebaute `tnt-editions-1.1.0.jar` aus `build/libs/`) und die passende **Fabric API für 26.2** in den `mods`-Ordner legen. Die bisherige Mod-JAR vorher entfernen, damit nur eine Version installiert ist. Die `-sources.jar` wird zum Spielen nicht benötigt.
 3. Den **TNT-Konfigurator** herstellen oder im Kreativ-Reiter **TNT Editions** nehmen:
 
    ```text
@@ -18,7 +18,7 @@ Eine Minecraft-Java-Mod für **Minecraft 26.2**, **Fabric Loader 0.19.5+**, **Fa
 
    Mit Cheats: `/give @s tnt_editions:tnt_tuner`
 
-4. Den Konfigurator in die Hand nehmen und rechtsklicken. **Sprengkraft 1–8×** und **Reichweite 1–4×** mit den Slidern einstellen. „Zufällige Farbe“ wählt eine andere der 16 Editionen; die Vorschau zeigt die Auswahl.
+4. Den Konfigurator in die Hand nehmen und rechtsklicken. **Sprengkraft 1–100×** und **Reichweite 1–4×** mit den Slidern einstellen. Für die Sprengkraft gibt es eine Schnellwahl für **1×, 8×, 25×, 50× und 100×**. Die Tasten **− / +** ändern den Wert um eins, mit **Umschalt** um zehn. Am fokussierten Slider funktionieren außerdem Pfeiltasten, Umschalt+Pfeiltasten sowie Pos1/Ende. „Zufällige Farbe“ wählt eine andere der 16 Editionen; die Vorschau zeigt die Auswahl.
 5. „1 Edition-TNT herstellen“ wandelt **genau ein normales TNT** aus dem Inventar in deine Edition um. Im Kreativmodus wird kein TNT verbraucht. Bei vollem Inventar wird die Ausgabe vor dir fallen gelassen.
 6. Das Edition-TNT platzieren und mit Feuerzeug, Feuerkugel, Redstone oder einem brennenden Projektil zünden. Kettenreaktionen funktionieren ebenfalls. Werte und Farbe bleiben beim Platzieren, Abbauen, Speichern und Zünden erhalten. Der Konfigurator merkt sich die zuletzt hergestellte Einstellung.
 
@@ -26,9 +26,11 @@ Eine Minecraft-Java-Mod für **Minecraft 26.2**, **Fabric Loader 0.19.5+**, **Fa
 
 ## Was die Regler ändern
 
-- **Sprengkraft:** reduziert den Explosionswiderstand zerstörbarer Blöcke und erhöht Schaden sowie Rückstoß. Bedrock, Barrieren und andere unzerstörbare Blöcke bleiben geschützt.
+- **Sprengkraft 1–100×:** Bei 1× gelten die normalen TNT-Werte. Bei 100× wird der Explosionswiderstand zerstörbarer Blöcke auf ein Hundertstel reduziert, der Explosionsschaden mit 100 multipliziert und der Rückstoß mit 10. Bedrock, Barrieren und andere unzerstörbare Blöcke bleiben geschützt. Auch Obsidian lässt sich mit einer starken Edition sprengen.
 - **Reichweite:** multipliziert den Vanilla-Explosionswert von 4 auf bis zu 16. Der tatsächlich zerstörte Bereich hängt wie bei Vanilla von Material, Abschirmung und Zufall ab; die Anzeige ist ein Multiplikator, keine garantierte Blockanzahl.
 - Die Vanilla-Gamerule `minecraft:tnt_explodes` bleibt wirksam. Mit hohen Werten entstehen große Explosionen; zum Ausprobieren eine Testwelt verwenden.
+
+**Bestehende Editionen aus Version 1.0.0 behalten ihre Werte.** Das Update erweitert den Wertebereich nach oben; bereits platzierte Blöcke und gespeicherte Konfiguratoren mit 1–8× bleiben gültig. 100× Sprengkraft vergrößert nicht automatisch den Durchmesser um den Faktor 100: dafür gibt es den unabhängigen Reichweitenregler, und die tatsächliche Form hängt vom Gelände ab.
 
 Menü und TNT verwenden ausschließlich Minecraft-GUI- und Block-Rendering, ohne direkte OpenGL-Aufrufe oder einen eigenen Grafik-Backend. Die Mod benötigt keine zusätzliche Vulkan-Bibliothek. Die Verfügbarkeit von Vulkan hängt vom Minecraft-Renderer, Betriebssystem und Treiber ab; die Mod erzwingt keinen Backend-Wechsel.
 

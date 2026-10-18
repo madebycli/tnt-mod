@@ -7,9 +7,11 @@ import net.minecraft.client.gui.components.AbstractSliderButton;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.input.KeyEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.Items;
+import org.lwjgl.glfw.GLFW;
 
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.IntConsumer;
@@ -20,6 +22,7 @@ public final class TunerScreen extends Screen {
     private int strength, range, color;
     private int left, top, panelWidth;
     private Button createButton;
+    private EditionSlider strengthSlider;
     private Component status = Component.empty();
     private int statusColor = 0xFF98A6BA;
     private int pendingTicks;
@@ -39,8 +42,27 @@ public final class TunerScreen extends Screen {
         top = Math.max(4, (height - 232) / 2);
         addRenderableWidget(Button.builder(Component.literal("×"), b -> onClose())
                 .bounds(left + panelWidth - 31, top + 8, 22, 20).build());
-        addRenderableWidget(new EditionSlider(left + 16, top + 62, panelWidth - 32,
+        var decrease = addRenderableWidget(Button.builder(Component.literal("−"),
+                b -> strengthSlider.setSelected(strength - (minecraft.hasShiftDown() ? 10 : 1)))
+                .bounds(left + 16, top + 62, 20, 20).build());
+        decrease.setTooltip(Tooltip.create(Component.translatable("screen.tnt_editions.decrease")));
+        strengthSlider = addRenderableWidget(new EditionSlider(left + 40, top + 62, panelWidth - 80,
                 strength, EditionSettings.MAX_STRENGTH, "screen.tnt_editions.strength", v -> strength = v));
+        strengthSlider.setTooltip(Tooltip.create(Component.translatable("screen.tnt_editions.precise")));
+        var increase = addRenderableWidget(Button.builder(Component.literal("+"),
+                b -> strengthSlider.setSelected(strength + (minecraft.hasShiftDown() ? 10 : 1)))
+                .bounds(left + panelWidth - 36, top + 62, 20, 20).build());
+        increase.setTooltip(Tooltip.create(Component.translatable("screen.tnt_editions.increase")));
+        int[] presets = {1, 8, 25, 50, 100};
+        int available = panelWidth - 32;
+        for (int index = 0; index < presets.length; index++) {
+            int preset = presets[index];
+            int x = left + 16 + index * available / presets.length;
+            int nextX = left + 16 + (index + 1) * available / presets.length;
+            var button = addRenderableWidget(Button.builder(Component.literal(preset + "×"),
+                    b -> strengthSlider.setSelected(preset)).bounds(x, top + 85, nextX - x - 2, 14).build());
+            button.setTooltip(Tooltip.create(Component.translatable("screen.tnt_editions.preset", preset)));
+        }
         addRenderableWidget(new EditionSlider(left + 16, top + 102, panelWidth - 32,
                 range, EditionSettings.MAX_RANGE, "screen.tnt_editions.range", v -> range = v));
         int half = (panelWidth - 38) / 2;
@@ -97,7 +119,6 @@ public final class TunerScreen extends Screen {
         graphics.item(EditionData.createTnt(settings), left + 21, top + 36);
         graphics.text(font, Component.translatable("item.tnt_editions.edition",
                 Component.translatable("color.tnt_editions." + settings.colorId())), left + 44, top + 41, 0xFF000000 | settings.rgb());
-        graphics.text(font, Component.translatable("screen.tnt_editions.strength_hint"), left + 18, top + 86, 0xFF98A6BA);
         graphics.text(font, Component.translatable("screen.tnt_editions.range_hint"), left + 18, top + 126, 0xFF98A6BA);
         int count = 0;
         if (minecraft.player != null) {
@@ -130,6 +151,24 @@ public final class TunerScreen extends Screen {
         }
 
         private int selected() { return 1 + (int) Math.round(value * (maximum - 1)); }
+        void setSelected(int selected) {
+            value = (Math.clamp(selected, 1, maximum) - 1.0) / (maximum - 1.0);
+            applyValue();
+            updateMessage();
+        }
+        @Override
+        public boolean keyPressed(KeyEvent event) {
+            if (canChangeValue) {
+                int step = (event.modifiers() & GLFW.GLFW_MOD_SHIFT) != 0 ? 10 : 1;
+                switch (event.key()) {
+                    case GLFW.GLFW_KEY_LEFT -> { setSelected(selected() - step); return true; }
+                    case GLFW.GLFW_KEY_RIGHT -> { setSelected(selected() + step); return true; }
+                    case GLFW.GLFW_KEY_HOME -> { setSelected(1); return true; }
+                    case GLFW.GLFW_KEY_END -> { setSelected(maximum); return true; }
+                }
+            }
+            return super.keyPressed(event);
+        }
         @Override protected void updateMessage() { setMessage(Component.translatable(translation, selected())); }
         @Override protected void applyValue() { consumer.accept(selected()); }
     }
