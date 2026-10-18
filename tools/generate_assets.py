@@ -69,7 +69,10 @@ for name, rgb in COLORS:
     write_json(f"data/tnt_editions/loot_table/blocks/{block}.json", {
         "type": "minecraft:block", "pools": [{"rolls": 1, "entries": [{
             "type": "minecraft:item", "name": f"tnt_editions:{block}",
-            "functions": [{"function": "minecraft:copy_state", "block": f"tnt_editions:{block}", "properties": ["strength", "range"]}]
+            "functions": [
+                {"function": "minecraft:copy_state", "block": f"tnt_editions:{block}", "properties": ["strength", "range"]},
+                {"function": "minecraft:copy_components", "source": "block_entity", "include": ["tnt_editions:blast_range"]}
+            ]
         }]}]})
 
 tuner = [[(0, 0, 0, 0) for _ in range(16)] for _ in range(16)]

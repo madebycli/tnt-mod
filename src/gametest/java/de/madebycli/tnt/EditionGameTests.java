@@ -29,6 +29,10 @@ import net.minecraft.network.protocol.PacketFlow;
 import net.minecraft.server.network.CommonListenerCookie;
 import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.buffer.Unpooled;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.storage.TagValueOutput;
+import net.minecraft.world.level.storage.TagValueInput;
+import net.minecraft.util.ProblemReporter;
 
 public final class EditionGameTests {
     private static <T> void check(GameTestHelper test, T expected, T actual, String description) {
@@ -45,6 +49,97 @@ public final class EditionGameTests {
                 CommonListenerCookie.createInitial(player.getGameProfile(), false));
         player.getInventory().clearContent();
         return player;
+    }
+
+    @GameTest
+    public void extendedRangeSurvivesItemBlockAndPrimedEntitySave(GameTestHelper test) {
+        var level = test.getLevel();
+        var registries = level.registryAccess();
+        var expected = new EditionSettings(100, 100, 6);
+        var item = EditionData.createTnt(expected);
+        var ops = registries.createSerializationContext(NbtOps.INSTANCE);
+        var restoredItem = ItemStack.CODEC.parse(ops, ItemStack.CODEC.encodeStart(ops, item).getOrThrow()).getOrThrow();
+        check(test, expected, EditionData.fromItem(restoredItem, 6), "Extended item save");
+        var tuner = new ItemStack(TntEditions.TUNER);
+        EditionData.saveTuner(tuner, expected);
+        var restoredTuner = ItemStack.CODEC.parse(ops, ItemStack.CODEC.encodeStart(ops, tuner).getOrThrow()).getOrThrow();
+        check(test, expected, EditionData.fromItem(restoredTuner, -1), "Extended tuner save");
+        var pos = new BlockPos(3, 2, 3);
+        var absolute = test.absolutePos(pos);
+        var state = TntEditions.EDITION_BLOCKS.get(6).defaultBlockState()
+                .setValue(EditionTntBlock.STRENGTH, 100).setValue(EditionTntBlock.RANGE, 4);
+        test.setBlock(pos, state);
+        var blockEntity = (EditionBlockEntity) level.getBlockEntity(absolute);
+        blockEntity.setBlastRange(100);
+        var restoredBlock = (EditionBlockEntity) BlockEntity.loadStatic(absolute, state, blockEntity.saveWithFullMetadata(registries), registries);
+        check(test, 100, restoredBlock.blastRange(), "Extended block save");
+        var clientBlock = new EditionBlockEntity(absolute, state);
+        clientBlock.loadWithComponents(TagValueInput.create(ProblemReporter.DISCARDING, registries, blockEntity.getUpdateTag(registries)));
+        check(test, 100, clientBlock.blastRange(), "Extended client block sync");
+        EditionTntBlock.primeEdition(level, absolute, state, null, false);
+        var primed = test.findOneEntity(EntityTypes.TNT);
+        var output = TagValueOutput.createWithContext(ProblemReporter.DISCARDING, registries);
+        primed.saveWithoutId(output);
+        var restoredPrimed = new PrimedTnt(EntityTypes.TNT, level);
+        restoredPrimed.load(TagValueInput.create(ProblemReporter.DISCARDING, registries, output.buildResult()));
+        check(test, 100, ((EditionRangeCarrier) restoredPrimed).tntEditions$getRange(), "Extended primed entity save");
+        test.succeed();
+    }
+
+    @GameTest
+    public void legacyItemsAndBlocksKeepTheirRange(GameTestHelper test) {
+        var item = new ItemStack(TntEditions.EDITION_ITEMS.get(3));
+        item.set(DataComponents.BLOCK_STATE, BlockItemStateProperties.EMPTY
+                .with(EditionTntBlock.STRENGTH, 8).with(EditionTntBlock.RANGE, 4));
+        var expected = new EditionSettings(8, 4, 3);
+        check(test, expected, EditionData.fromItem(item, 3), "Legacy item without extended component");
+        var pos = new BlockPos(3, 2, 3);
+        var state = TntEditions.EDITION_BLOCKS.get(3).defaultBlockState()
+                .setValue(EditionTntBlock.STRENGTH, 8).setValue(EditionTntBlock.RANGE, 4);
+        test.setBlock(pos, state);
+        check(test, expected, EditionData.fromBlock(test.getLevel(), test.absolutePos(pos), state), "Legacy block defaults");
+        test.succeed();
+    }
+
+    @GameTest
+    public void largeExplosionViewDoesNotGenerateChunks(GameTestHelper test) {
+        var level = test.getLevel();
+        var view = new LoadedExplosionView(level);
+        var remote = test.absolutePos(new BlockPos(16000, 2, 16000));
+        test.assertTrue(level.getChunkSource().getChunkNow(remote.getX() >> 4, remote.getZ() >> 4) == null, "Remote chunk starts unloaded");
+        int loaded = level.getChunkSource().getLoadedChunksCount();
+        check(test, Blocks.BEDROCK.defaultBlockState(), view.getBlockState(remote), "Unloaded chunks stop rays");
+        test.assertTrue(view.getFluidState(remote).isEmpty(), "Unloaded fluid lookup is empty");
+        test.assertTrue(view.getBlockEntity(remote) == null, "Unloaded block entity lookup is empty");
+        var player = test.makeMockPlayer(GameType.SURVIVAL);
+        var playerPos = Vec3.atBottomCenterOf(test.absolutePos(new BlockPos(2, 2, 2)));
+        player.setPos(playerPos.x, playerPos.y, playerPos.z);
+        check(test, 0.0F, view.exposure(Vec3.atCenterOf(remote), player), "Unloaded terrain shields entities");
+        check(test, loaded, level.getChunkSource().getLoadedChunksCount(), "Lookups do not load chunks");
+        test.setBlock(new BlockPos(4, 2, 2), Blocks.STONE);
+        var center = Vec3.atCenterOf(test.absolutePos(new BlockPos(5, 3, 2)));
+        float vanilla = net.minecraft.world.level.ServerExplosion.getSeenPercent(center, player);
+        test.assertTrue(Math.abs(vanilla - view.exposure(center, player)) < 0.000001F, "Loaded exposure matches vanilla collision sampling");
+        test.succeed();
+    }
+
+    @GameTest(maxTicks = 30, skyAccess = true)
+    public void hundredRangeDetonationReachesDistantBlock(GameTestHelper test) {
+        var pos = new BlockPos(3, 2, 3);
+        // This point lies on one of vanilla's upward explosion rays, over 64 blocks away.
+        var distant = pos.offset(4, 64, 4);
+        test.setBlock(distant, Blocks.STONE);
+        var state = TntEditions.EDITION_BLOCKS.get(0).defaultBlockState();
+        test.setBlock(pos, state);
+        ((EditionBlockEntity) test.getLevel().getBlockEntity(test.absolutePos(pos))).setBlastRange(100);
+        EditionTntBlock.primeEdition(test.getLevel(), test.absolutePos(pos), state, null, false);
+        var tnt = test.findOneEntity(EntityTypes.TNT);
+        tnt.setFuse(1);
+        test.runAfterDelay(3, () -> {
+            test.assertTrue(!tnt.isAlive(), "100× range TNT detonated");
+            test.assertBlockPresent(Blocks.AIR, distant);
+            test.succeed();
+        });
     }
 
     @GameTest
@@ -68,7 +163,7 @@ public final class EditionGameTests {
 
     @GameTest
     public void itemPlacementMiningKeepsEdition(GameTestHelper test) {
-        var settings = new EditionSettings(7, 3, 9);
+        var settings = new EditionSettings(100, 100, 9);
         var stack = EditionData.createTnt(settings);
         var pos = new BlockPos(2, 2, 2);
         test.setBlock(pos.below(), Blocks.STONE);
@@ -78,11 +173,11 @@ public final class EditionGameTests {
         var context = new BlockPlaceContext(player, InteractionHand.MAIN_HAND, stack,
                 new BlockHitResult(Vec3.atBottomCenterOf(absolute), Direction.UP, absolute.below(), false));
         ((EditionTntItem) stack.getItem()).place(context);
-        test.assertBlockProperty(pos, EditionTntBlock.STRENGTH, 7);
-        test.assertBlockProperty(pos, EditionTntBlock.RANGE, 3);
+        test.assertBlockProperty(pos, EditionTntBlock.STRENGTH, 100);
+        test.assertBlockProperty(pos, EditionTntBlock.RANGE, 4);
         var state = test.getBlockState(pos);
-        check(test, settings, EditionData.fromBlock(state), "Placed edition");
-        var drops = Block.getDrops(state, test.getLevel(), absolute, null);
+        check(test, settings, EditionData.fromBlock(test.getLevel(), absolute, state), "Placed edition");
+        var drops = Block.getDrops(state, test.getLevel(), absolute, test.getLevel().getBlockEntity(absolute));
         check(test, 1, drops.size(), "Drop count");
         check(test, settings, EditionData.fromItem(drops.getFirst(), 9), "Mined edition");
         test.succeed();
@@ -93,7 +188,7 @@ public final class EditionGameTests {
         var player = testPlayer(test, GameType.SURVIVAL);
         player.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(TntEditions.TUNER));
         player.getInventory().setItem(1, new ItemStack(Items.TNT, 3));
-        var settings = new EditionSettings(100, 2, 6);
+        var settings = new EditionSettings(100, 100, 6);
         check(test, EditionCrafting.SUCCESS, EditionCrafting.craft(player, InteractionHand.MAIN_HAND, settings), "Craft result");
         check(test, 2, player.getInventory().getItem(1).getCount(), "Remaining vanilla TNT");
         check(test, settings, EditionData.fromItem(player.getMainHandItem(), -1), "Tuner remembers settings");
@@ -127,10 +222,13 @@ public final class EditionGameTests {
                 .setValue(EditionTntBlock.STRENGTH, 6).setValue(EditionTntBlock.RANGE, 3);
         test.setBlock(pos, state);
         test.setBlock(pos.west(), Blocks.REDSTONE_BLOCK);
-        var tnt = test.findOneEntity(EntityTypes.TNT);
-        check(test, state, tnt.getBlockState(), "Primed block state");
-        test.assertBlockPresent(Blocks.AIR, pos);
-        test.succeed();
+        test.runAfterDelay(2, () -> {
+            var tnt = test.findOneEntity(EntityTypes.TNT);
+            check(test, state, tnt.getBlockState(), "Primed block state");
+            check(test, 3, ((EditionRangeCarrier) tnt).tntEditions$getRange(), "Legacy range kept on ignition");
+            test.assertBlockPresent(Blocks.AIR, pos);
+            test.succeed();
+        });
     }
 
     @GameTest
@@ -138,15 +236,18 @@ public final class EditionGameTests {
         var pos = new BlockPos(3, 2, 3);
         test.setBlock(pos.below(), Blocks.REDSTONE_BLOCK);
         var player = testPlayer(test, GameType.SURVIVAL);
-        var stack = EditionData.createTnt(new EditionSettings(100, 4, 2));
+        var stack = EditionData.createTnt(new EditionSettings(100, 100, 2));
         player.setItemInHand(InteractionHand.MAIN_HAND, stack);
         var absolute = test.absolutePos(pos);
         var context = new BlockPlaceContext(player, InteractionHand.MAIN_HAND, stack,
                 new BlockHitResult(Vec3.atBottomCenterOf(absolute), Direction.UP, absolute.below(), false));
         ((EditionTntItem) stack.getItem()).place(context);
-        var primed = test.findOneEntity(EntityTypes.TNT);
-        check(test, new EditionSettings(100, 4, 2), EditionData.fromBlock(primed.getBlockState()), "Powered placement settings");
-        test.succeed();
+        test.runAfterDelay(2, () -> {
+            var primed = test.findOneEntity(EntityTypes.TNT);
+            check(test, new EditionSettings(100, 4, 2), EditionData.fromBlock(primed.getBlockState()), "Powered placement base state");
+            check(test, 100, ((EditionRangeCarrier) primed).tntEditions$getRange(), "Powered placement extended range");
+            test.succeed();
+        });
     }
 
     @GameTest
@@ -166,11 +267,13 @@ public final class EditionGameTests {
         var state = TntEditions.EDITION_BLOCKS.get(11).defaultBlockState()
                 .setValue(EditionTntBlock.STRENGTH, 100).setValue(EditionTntBlock.RANGE, 2);
         test.setBlock(pos, state);
+        ((EditionBlockEntity) test.getLevel().getBlockEntity(test.absolutePos(pos))).setBlastRange(100);
         var absolute = test.absolutePos(pos);
         test.getLevel().explode(null, absolute.getX() + 0.5, absolute.getY() + 0.5, absolute.getZ() + 0.5,
                 2, Level.ExplosionInteraction.TNT);
         var tnt = test.findOneEntity(EntityTypes.TNT);
         check(test, state, tnt.getBlockState(), "Chain reaction edition");
+        check(test, 100, ((EditionRangeCarrier) tnt).tntEditions$getRange(), "Chain reaction extended range");
         test.assertTrue(tnt.getFuse() < 80, "Chain reaction has short fuse");
         test.succeed();
     }
@@ -209,12 +312,13 @@ public final class EditionGameTests {
     public void hundredStrengthSurvivesNetworkCodec(GameTestHelper test) {
         var buffer = new RegistryFriendlyByteBuf(Unpooled.buffer(), test.getLevel().registryAccess());
         try {
-            var payload = new EditionNetworking.CreatePayload(InteractionHand.MAIN_HAND, 100, 4, 15);
+            var payload = new EditionNetworking.CreatePayload(InteractionHand.MAIN_HAND, 100, 100, 15);
             EditionNetworking.CreatePayload.CODEC.encode(buffer, payload);
             var received = EditionNetworking.CreatePayload.CODEC.decode(buffer);
             check(test, payload, received, "100× network payload");
             test.assertTrue(EditionSettings.isValid(received.strength(), received.range(), received.color()), "100× is accepted");
             test.assertTrue(!EditionSettings.isValid(101, 4, 15), "Above 100× is rejected");
+            test.assertTrue(!EditionSettings.isValid(100, 101, 15), "Above 100× range is rejected");
         } finally {
             buffer.release();
         }

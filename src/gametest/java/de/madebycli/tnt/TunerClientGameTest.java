@@ -3,17 +3,25 @@ package de.madebycli.tnt;
 import de.madebycli.tnt.client.TunerScreen;
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.InputType;
 import net.minecraft.client.gui.components.AbstractSliderButton;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.input.MouseButtonInfo;
-import net.minecraft.client.input.KeyEvent;
-import net.minecraft.client.InputType;
+import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.context.BlockPlaceContext;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.Vec3;
 import org.lwjgl.glfw.GLFW;
 
-/** Full client → server → inventory check, plus a screenshot of the actual rendered menu. */
+/** Full menu → network → 100×/100× inventory → placed block/client synchronization check. */
 public final class TunerClientGameTest implements FabricClientGameTest {
     @Override
     public void runTest(ClientGameTestContext context) {
@@ -24,80 +32,107 @@ public final class TunerClientGameTest implements FabricClientGameTest {
             context.waitFor(mc -> mc.player != null && mc.player.getMainHandItem().is(TntEditions.TUNER));
             context.runOnClient(mc -> mc.gameMode.useItem(mc.player, InteractionHand.MAIN_HAND));
             context.waitForScreen(TunerScreen.class);
-            context.clickScreenButton("100×");
-            context.clickScreenButton("+");
-            assertStrength(context, 100); // upper boundary
-            context.clickScreenButton("−");
-            assertStrength(context, 99);
-            context.clickScreenButton("+");
-            assertStrength(context, 100);
-            context.clickScreenButton("1×");
-            context.clickScreenButton("−");
-            assertStrength(context, 1); // lower boundary
-            context.clickScreenButton("25×");
-            context.runOnClient(mc -> {
-                var slider = (AbstractSliderButton) mc.gui.screen().children().stream()
-                        .filter(AbstractSliderButton.class::isInstance).findFirst().orElseThrow();
-                // Route the mouse click through the screen so native focus handling runs too.
-                mc.setLastInputType(InputType.MOUSE);
-                mc.gui.screen().mouseClicked(new MouseButtonEvent(slider.getX() + 4, slider.getY() + 10, new MouseButtonInfo(0, 0)), false);
-                slider.keyPressed(new KeyEvent(GLFW.GLFW_KEY_RIGHT, 0, 0));
-                if (!slider.getMessage().getString().equals(Component.translatable("screen.tnt_editions.strength", 2).getString())) {
-                    throw new AssertionError("Arrow key must increase strength by exactly one");
-                }
-                slider.keyPressed(new KeyEvent(GLFW.GLFW_KEY_RIGHT, 0, GLFW.GLFW_MOD_SHIFT));
-                if (!slider.getMessage().getString().equals(Component.translatable("screen.tnt_editions.strength", 12).getString())) {
-                    throw new AssertionError("Shift+arrow must increase strength by ten");
-                }
-                slider.keyPressed(new KeyEvent(GLFW.GLFW_KEY_END, 0, 0));
-            });
-            assertStrength(context, 100);
-            context.runOnClient(mc -> {
-                var screen = (TunerScreen) mc.gui.screen();
-                var sliders = screen.children().stream().filter(AbstractSliderButton.class::isInstance)
-                        .map(AbstractSliderButton.class::cast).toList();
-                if (sliders.size() != 2) throw new AssertionError("Expected strength and range sliders");
-                for (var slider : sliders) {
-                    var click = new MouseButtonEvent(slider.getRight() - 4, slider.getY() + 10, new MouseButtonInfo(0, 0));
-                    slider.mouseClicked(click, false);
-                    slider.mouseReleased(click);
-                }
-            });
+            for (int row = 0; row < 2; row++) {
+                clickRowButton(context, row, "100×");
+                clickRowButton(context, row, "+");
+                assertSetting(context, row, 100);
+                clickRowButton(context, row, "−");
+                assertSetting(context, row, 99);
+                clickRowButton(context, row, "+");
+                assertSetting(context, row, 100);
+                clickRowButton(context, row, "1×");
+                clickRowButton(context, row, "−");
+                assertSetting(context, row, 1);
+                clickRowButton(context, row, "25×");
+                assertSetting(context, row, 25);
+                final int index = row;
+                context.runOnClient(mc -> {
+                    var slider = slider(mc, index);
+                    mc.setLastInputType(InputType.MOUSE);
+                    var click = new MouseButtonEvent(slider.getX() + 4, slider.getY() + 10, new MouseButtonInfo(0, 0));
+                    mc.gui.screen().mouseClicked(click, false);
+                    mc.gui.screen().mouseReleased(click);
+                    slider.keyPressed(new KeyEvent(GLFW.GLFW_KEY_RIGHT, 0, 0));
+                });
+                assertSetting(context, row, 2);
+                context.runOnClient(mc -> slider(mc, index).keyPressed(new KeyEvent(GLFW.GLFW_KEY_RIGHT, 0, GLFW.GLFW_MOD_SHIFT)));
+                assertSetting(context, row, 12);
+                context.runOnClient(mc -> slider(mc, index).keyPressed(new KeyEvent(GLFW.GLFW_KEY_END, 0, 0)));
+                assertSetting(context, row, 100);
+            }
             context.clickScreenButton(Component.translatable("screen.tnt_editions.shuffle").getString());
             context.waitTicks(3);
             context.takeScreenshot("tnt-tuner");
             context.clickScreenButton(Component.translatable("screen.tnt_editions.create").getString());
             world.getServer().waitFor(server -> {
-                var player = server.getPlayerList().getPlayers().getFirst();
-                for (int i = 0; i < player.getInventory().getContainerSize(); i++) {
-                    var stack = player.getInventory().getItem(i);
-                    if (stack.getItem() instanceof EditionTntItem) {
-                        var settings = EditionData.fromItem(stack, TntEditions.colorOf(((EditionTntItem) stack.getItem()).getBlock()));
-                        if (settings.strength() != 100 || settings.range() != 4 || stack.getCount() != 1) {
-                            throw new AssertionError("Sliders were not applied to the server output: " + settings);
+                var inventory = server.getPlayerList().getPlayers().getFirst().getInventory();
+                for (int i = 0; i < inventory.getContainerSize(); i++) {
+                    var stack = inventory.getItem(i);
+                    if (stack.getItem() instanceof EditionTntItem item) {
+                        var settings = EditionData.fromItem(stack, TntEditions.colorOf(item.getBlock()));
+                        if (settings.strength() != 100 || settings.range() != 100 || stack.getCount() != 1) {
+                            throw new AssertionError("Sliders were not applied to server output: " + settings);
                         }
                         return true;
                     }
                 }
                 return false;
             });
-            world.getServer().runOnServer(server -> {
-                var inventory = server.getPlayerList().getPlayers().getFirst().getInventory();
+            var placed = world.getServer().computeOnServer(server -> {
+                var player = server.getPlayerList().getPlayers().getFirst();
+                var inventory = player.getInventory();
                 int remaining = 0;
+                ItemStack edition = ItemStack.EMPTY;
                 for (int i = 0; i < inventory.getContainerSize(); i++) {
-                    if (inventory.getItem(i).is(Items.TNT)) remaining += inventory.getItem(i).getCount();
+                    var stack = inventory.getItem(i);
+                    if (stack.is(Items.TNT)) remaining += stack.getCount();
+                    if (stack.getItem() instanceof EditionTntItem) edition = stack.copy();
                 }
-                if (remaining != 2) throw new AssertionError("Expected exactly one consumed TNT, remaining=" + remaining);
+                if (remaining != 2) throw new AssertionError("Expected one consumed TNT, remaining=" + remaining);
+                var level = player.level();
+                var pos = player.blockPosition().east(3);
+                level.setBlockAndUpdate(pos.below(), Blocks.STONE.defaultBlockState());
+                player.setItemInHand(InteractionHand.OFF_HAND, edition);
+                var placement = new BlockPlaceContext(player, InteractionHand.OFF_HAND, edition,
+                        new BlockHitResult(Vec3.atBottomCenterOf(pos), Direction.UP, pos.below(), false));
+                ((EditionTntItem) edition.getItem()).place(placement);
+                if (!(level.getBlockEntity(pos) instanceof EditionBlockEntity block) || block.blastRange() != 100) {
+                    throw new AssertionError("Placed block lost extended range");
+                }
+                return pos;
             });
+            context.waitFor(mc -> mc.level.getBlockEntity(placed) instanceof EditionBlockEntity block && block.blastRange() == 100);
         }
     }
 
-    private static void assertStrength(ClientGameTestContext context, int expected) {
+    private static AbstractSliderButton slider(Minecraft mc, int row) {
+        var sliders = mc.gui.screen().children().stream().filter(AbstractSliderButton.class::isInstance)
+                .map(AbstractSliderButton.class::cast).toList();
+        if (sliders.size() != 2) throw new AssertionError("Expected strength and range sliders");
+        return sliders.get(row);
+    }
+
+    private static void clickRowButton(ClientGameTestContext context, int row, String label) {
         context.runOnClient(mc -> {
-            var slider = (AbstractSliderButton) mc.gui.screen().children().stream()
-                    .filter(AbstractSliderButton.class::isInstance).findFirst().orElseThrow();
-            if (!slider.getMessage().getString().equals(Component.translatable("screen.tnt_editions.strength", expected).getString())) {
-                throw new AssertionError("Unexpected strength display, expected " + expected + ": " + slider.getMessage().getString());
+            var slider = slider(mc, row);
+            var button = mc.gui.screen().children().stream().filter(Button.class::isInstance)
+                    .map(Button.class::cast).filter(b -> b.getMessage().getString().equals(label)
+                            && (b.getY() == slider.getY() || b.getY() == slider.getY() + 23))
+                    .findFirst().orElseThrow(() -> new AssertionError("Missing button " + label + " in row " + row));
+            mc.setLastInputType(InputType.MOUSE);
+            var click = new MouseButtonEvent(button.getX() + button.getWidth() / 2.0,
+                    button.getY() + button.getHeight() / 2.0, new MouseButtonInfo(0, 0));
+            mc.gui.screen().mouseClicked(click, false);
+            mc.gui.screen().mouseReleased(click);
+        });
+    }
+
+    private static void assertSetting(ClientGameTestContext context, int row, int expected) {
+        context.runOnClient(mc -> {
+            var slider = slider(mc, row);
+            String key = row == 0 ? "screen.tnt_editions.strength" : "screen.tnt_editions.range";
+            if (!slider.getMessage().getString().equals(Component.translatable(key, expected).getString())) {
+                throw new AssertionError("Expected " + expected + " in row " + row + ", actual: " + slider.getMessage().getString());
             }
         });
     }

@@ -5,7 +5,7 @@ import java.util.List;
 /** Limits shared by sliders, server validation, item data and explosions. */
 public record EditionSettings(int strength, int range, int color) {
     public static final int MAX_STRENGTH = 100;
-    public static final int MAX_RANGE = 4;
+    public static final int MAX_RANGE = 100;
     public record Color(String id, int rgb) {}
     public static final List<Color> COLORS = List.of(
             new Color("ruby", 0xEB4D63), new Color("amber", 0xF59B42),

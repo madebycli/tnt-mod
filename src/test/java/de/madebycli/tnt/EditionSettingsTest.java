@@ -7,10 +7,10 @@ class EditionSettingsTest {
     @Test void strengthAndRangeAreIndependent() {
         var normal = EditionSettings.DEFAULT;
         var stronger = new EditionSettings(100, 1, 0);
-        var wider = new EditionSettings(1, 4, 0);
+        var wider = new EditionSettings(1, 100, 0);
         assertEquals(normal.explosionPower(), stronger.explosionPower());
         assertEquals(0.01F, stronger.resistanceMultiplier());
-        assertEquals(16.0F, wider.explosionPower());
+        assertEquals(400.0F, wider.explosionPower());
         assertEquals(normal.resistanceMultiplier(), wider.resistanceMultiplier());
     }
 
@@ -19,7 +19,7 @@ class EditionSettingsTest {
             for (int range = 1; range <= EditionSettings.MAX_RANGE; range++) {
                 for (int color = 0; color < EditionSettings.COLORS.size(); color++) {
                     var settings = new EditionSettings(strength, range, color);
-                    assertTrue(settings.explosionPower() >= 4 && settings.explosionPower() <= 16);
+                    assertTrue(settings.explosionPower() >= 4 && settings.explosionPower() <= 400);
                     assertTrue(settings.resistanceMultiplier() >= 0.01F && settings.resistanceMultiplier() <= 1);
                     assertTrue(settings.rgb() >= 0 && settings.rgb() <= 0xFFFFFF);
                 }
@@ -31,7 +31,7 @@ class EditionSettingsTest {
         for (int bad : new int[]{Integer.MIN_VALUE, -1, 0, 101, Integer.MAX_VALUE}) {
             assertThrows(IllegalArgumentException.class, () -> new EditionSettings(bad, 1, 0));
         }
-        for (int bad : new int[]{Integer.MIN_VALUE, -1, 0, 5, Integer.MAX_VALUE}) {
+        for (int bad : new int[]{Integer.MIN_VALUE, -1, 0, 101, Integer.MAX_VALUE}) {
             assertThrows(IllegalArgumentException.class, () -> new EditionSettings(1, bad, 0));
         }
         assertThrows(IllegalArgumentException.class, () -> new EditionSettings(1, 1, -1));
