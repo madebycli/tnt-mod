@@ -1,0 +1,24 @@
+{
+  "type": "minecraft:block",
+  "pools": [
+    {
+      "rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "tnt_editions:solar_tnt",
+          "functions": [
+            {
+              "function": "minecraft:copy_state",
+              "block": "tnt_editions:solar_tnt",
+              "properties": [
+                "strength",
+                "range"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

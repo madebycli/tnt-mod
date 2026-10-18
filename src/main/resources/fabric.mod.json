@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "tnt_editions",
+  "version": "${version}",
+  "name": "TNT Editions",
+  "description": "Build colorful, individually configurable TNT editions with a pocket tuner.",
+  "authors": ["madebycli"],
+  "environment": "*",
+  "entrypoints": {
+    "main": ["de.madebycli.tnt.TntEditions"],
+    "client": ["de.madebycli.tnt.client.TntEditionsClient"]
+  },
+  "mixins": ["tnt_editions.mixins.json"],
+  "depends": {
+    "fabricloader": ">=0.19.5",
+    "minecraft": "26.2",
+    "java": ">=25",
+    "fabric-api": "*"
+  }
+}

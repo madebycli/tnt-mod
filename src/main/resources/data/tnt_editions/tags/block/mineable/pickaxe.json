@@ -1,0 +1,21 @@
+{
+  "replace": false,
+  "values": [
+    "tnt_editions:ruby_tnt",
+    "tnt_editions:amber_tnt",
+    "tnt_editions:solar_tnt",
+    "tnt_editions:lime_tnt",
+    "tnt_editions:emerald_tnt",
+    "tnt_editions:mint_tnt",
+    "tnt_editions:turquoise_tnt",
+    "tnt_editions:ocean_tnt",
+    "tnt_editions:cobalt_tnt",
+    "tnt_editions:violet_tnt",
+    "tnt_editions:orchid_tnt",
+    "tnt_editions:pink_tnt",
+    "tnt_editions:copper_tnt",
+    "tnt_editions:silver_tnt",
+    "tnt_editions:obsidian_tnt",
+    "tnt_editions:ivory_tnt"
+  ]
+}

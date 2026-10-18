@@ -1,0 +1,15 @@
+{
+  "parent": "minecraft:recipes/root",
+  "criteria": {
+    "has_diamond": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": { "items": [{ "items": "minecraft:diamond" }] }
+    },
+    "has_recipe": {
+      "trigger": "minecraft:recipe_unlocked",
+      "conditions": { "recipe": "tnt_editions:tnt_tuner" }
+    }
+  },
+  "requirements": [["has_diamond", "has_recipe"]],
+  "rewards": { "recipes": ["tnt_editions:tnt_tuner"] }
+}

@@ -1,0 +1,24 @@
+{
+  "type": "minecraft:block",
+  "pools": [
+    {
+      "rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "tnt_editions:silver_tnt",
+          "functions": [
+            {
+              "function": "minecraft:copy_state",
+              "block": "tnt_editions:silver_tnt",
+              "properties": [
+                "strength",
+                "range"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
